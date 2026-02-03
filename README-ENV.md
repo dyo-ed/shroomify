@@ -7,9 +7,7 @@ This document explains how to set up the environment variables for the Shroomify
 Create a `.env.local` file in the root directory with the following variables:
 
 ```bash
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url_here
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+
 
 # Backend API Configuration
 NEXT_PUBLIC_API_URL=http://localhost:5000
@@ -31,10 +29,7 @@ SECRET_KEY=your_secret_key_here
 
 ## Getting Your Values
 
-### Supabase
-1. Go to your Supabase project dashboard
-2. Navigate to Settings > API
-3. Copy the Project URL and anon/public key
+
 
 ### ngrok
 1. Sign up at https://ngrok.com
