@@ -1,4 +1,16 @@
-# SHROOMIFY - Image-Based Contamination Classification
+# 🍄 Shroomify: Image-Based Contamination Classification
+
+<p align="center">
+    <picture>
+        <source media="(prefers-color-scheme: light)" srcset="https://github.com/dyo-ed/shroomify/blob/main/public/banner.png?raw=true">
+        <img src="public/banner.png" alt="Shroomify" width="500">
+    </picture>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dyo-ed/shroomify"><img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub repo"></a>
+  <img src="https://img.shields.io/badge/Bachelor%20Thesis-8A2BE2" alt="Bachelor Thesis">
+</p>
 
 <div align=justify>
 
