@@ -1,7 +1,7 @@
 'use client';
 import { CheckCircle, ChevronDown, ChevronUp, Play } from 'lucide-react';
 import React, { useState } from 'react';
-import { useAuth } from '../../lib/AuthContext';
+
 
 interface HomeTabProps {
   onNavigateToProfile: () => void;
@@ -9,7 +9,6 @@ interface HomeTabProps {
 
 const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
   const [expandedMethod, setExpandedMethod] = useState<string | null>(null);
-  const { isLoggedIn } = useAuth();
 
   const cultivationMethods = [
     {
@@ -31,7 +30,7 @@ const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
         },
         {
           title: 'Straw Substrate Preparation for Mushroom Growing',
-          type: 'YouTube Tutorial', 
+          type: 'YouTube Tutorial',
           url: 'https://www.youtube.com/watch?v=J4Vq-xHqUho',
           duration: '14:20',
           description: 'FreshCap Mushrooms tutorial on proper straw pasteurization and preparation',
@@ -40,7 +39,7 @@ const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
         {
           title: 'Growing Wine Cap Mushrooms on Straw',
           type: 'YouTube Tutorial',
-          url: 'https://www.youtube.com/watch?v=3Z1q8BFTyNU', 
+          url: 'https://www.youtube.com/watch?v=3Z1q8BFTyNU',
           duration: '16:30',
           description: 'Mushroom Mountain\'s guide to cultivating wine cap mushrooms using straw',
           thumbnail: 'https://img.youtube.com/vi/3Z1q8BFTyNU/maxresdefault.jpg'
@@ -125,7 +124,7 @@ const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
 
   return (
     <div className="p-6 space-y-8">
-    {/* Welcome Section */}
+      {/* Welcome Section */}
       <div className="text-center">
         <h2 className="text-2xl font-extrabold mb-2 uppercase tracking-wide">
           <span className="bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent">
@@ -153,20 +152,6 @@ const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
             <CheckCircle className="w-4 h-4 mr-2" />
             <span>Designed for beginners and pros alike</span>
           </div>
-
-            {/* Join KabuTeam Button - Only show if not logged in */}
-          {!isLoggedIn && (
-            <div className="text-center">
-              <button 
-                onClick={onNavigateToProfile}
-                className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white font-semibold py-3 px-8 rounded-lg shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center space-x-2 mx-auto mt-5"
-              >
-                <span>🍄</span>
-                <span>Join the KabuTeam</span>
-              </button>
-            </div>
-          )}
-
         </div>
       </div>
 
@@ -205,7 +190,7 @@ const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
                   </div>
                 </div>
               </button>
-              
+
               {expandedMethod === method.id && (
                 <div className="px-4 pb-6 border-t border-gray-700">
                   <div className="pt-4">
@@ -320,7 +305,7 @@ const HomeTab = ({ onNavigateToProfile }: HomeTabProps) => {
       <div className="bg-gradient-to-r from-green-600/10 to-blue-600/10 rounded-lg p-4 border border-green-600/20">
         <h3 className="text-lg font-semibold text-white mb-2">📚 Did You Know?</h3>
         <p className="text-gray-300 text-sm">
-          Mushrooms are more closely related to animals than plants! They obtain nutrients by breaking down organic matter, 
+          Mushrooms are more closely related to animals than plants! They obtain nutrients by breaking down organic matter,
           just like animals do, rather than producing their own food through photosynthesis like plants.
         </p>
       </div>

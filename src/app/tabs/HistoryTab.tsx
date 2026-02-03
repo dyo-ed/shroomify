@@ -1,17 +1,15 @@
 'use client';
 import { Calendar, Clock, AlertTriangle, CheckCircle, Eye, Trash2, Search, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../lib/AuthContext';
 import ImageEnlargementModal from './ImageEnlargementModal';
 
 // Types for better type safety and scalability
 interface HistoryLog {
-  id: number;
+  id: number | string;
   date_logged?: string | null;
   timestamp?: string | null;
   created_at?: string | null;
-  image: Uint8Array | string | null; // Can be Uint8Array or base64 string
+  image: string | null; // Base64 string from local storage
   detected_disease: number | null;
   email: string | null;
   confidence: number | null;
@@ -47,8 +45,6 @@ const CONFIG = {
 };
 
 const HistoryTab = () => {
-  const { user } = useAuth();
-  
   // State management for scalability
   const [filters, setFilters] = useState<FilterOptions>({
     status: 'all',
@@ -67,7 +63,7 @@ const HistoryTab = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyLogs, setHistoryLogs] = useState<HistoryLog[]>([]);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ show: boolean; logId: number | null }>({ show: false, logId: null });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ show: boolean; logId: string | number | null }>({ show: false, logId: null });
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState<{ show: boolean; logIds: string[] }>({ show: false, logIds: [] });
   const [sortConfig, setSortConfig] = useState<{
     field: keyof HistoryLog;
@@ -78,112 +74,26 @@ const HistoryTab = () => {
   });
   const [enlargedImage, setEnlargedImage] = useState<{ src: string; title: string } | null>(null);
 
-  // Fetch history logs from Supabase
+  // Fetch history logs from LocalStorage
   const fetchHistoryLogs = useCallback(async () => {
-    console.log('fetchHistoryLogs called, user:', user);
-    console.log('user email:', user?.email);
-    
-    if (!user?.email) {
-      console.log('No user email found, setting empty logs');
-      setHistoryLogs([]);
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
-      console.log('Querying Supabase for email:', user.email);
-      
-      // First, let's check if the table exists and what data is in it
-      console.log('Testing table access...');
-      const testQuery = await supabase
-        .from('"Logs"')
-        .select('*')
-        .limit(5);
-      
-      console.log('Test query result:', testQuery);
-      
-      // Let's also try some common table names
-      console.log('Trying different table names...');
-      const tablesToTry = ['Logs', 'logs'];
-      
-      for (const tableName of tablesToTry) {
-        try {
-          const result = await supabase.from(tableName).select('*').limit(1);
-          console.log(`Table "${tableName}":`, result);
-          if (result.data && result.data.length > 0) {
-            console.log(`✅ Found data in table: ${tableName}`);
-            break;
-          }
-        } catch (err) {
-          console.log(`❌ Table "${tableName}" not found or error:`, err);
-        }
-      }
-      
-      // Use Supabase's built-in filtering (more reliable)
-      console.log('DEBUG: Fetching data with email filter from Supabase');
-      let { data, error: fetchError } = await supabase
-        .from('"Logs"')
-        .select('*')
-        .eq('email', user.email)
-        .order('date_logged', { ascending: false });
+      console.log('Fetching history from localStorage...');
+      const storedScans = localStorage.getItem('shroomify_scans');
 
-      // If that fails, try without quotes
-      if (fetchError) {
-        console.log('First query failed, trying without quotes:', fetchError);
-        const result = await supabase
-          .from('Logs')
-          .select('*')
-          .eq('email', user.email)
-          .order('date_logged', { ascending: false });
-        
-        data = result.data;
-        fetchError = result.error;
-      }
+      if (storedScans) {
+        const parsedScans = JSON.parse(storedScans);
+        console.log(`Found ${parsedScans.length} scans in localStorage`);
 
-      console.log('DEBUG: Filtered data from Supabase:', data);
-      console.log('DEBUG: Looking for email:', user.email);
-      
-      // If no data found, try case-insensitive search
-      if (!data || data.length === 0) {
-        console.log('DEBUG: No data found, trying case-insensitive search');
-        const { data: caseInsensitiveData, error: _caseError } = await supabase
-          .from('"Logs"')
-          .select('*')
-          .ilike('email', user.email)
-          .order('date_logged', { ascending: false });
-        
-        console.log('DEBUG: Case-insensitive search result:', caseInsensitiveData);
-        if (caseInsensitiveData && caseInsensitiveData.length > 0) {
-          data = caseInsensitiveData;
-        }
+        // Map local storage data to HistoryLog interface if needed
+        // Assuming scan data structure closely matches what we need
+        setHistoryLogs(parsedScans);
+      } else {
+        console.log('No scans found in localStorage');
+        setHistoryLogs([]);
       }
-
-      console.log('Supabase response:', { data, error: fetchError });
-
-      if (fetchError) {
-        console.error('Supabase error:', fetchError);
-        throw fetchError;
-      }
-
-      console.log('Setting history logs:', data);
-      // Debug the image data structure
-      if (data && data.length > 0) {
-        console.log('Sample log data structure:', data[0]);
-        if (data[0].image) {
-          console.log('Image data type:', typeof data[0].image);
-          console.log('Image data constructor:', data[0].image.constructor.name);
-          if (data[0].image instanceof Uint8Array) {
-            console.log('Image Uint8Array length:', data[0].image.length);
-            console.log('First 10 bytes:', Array.from(data[0].image.slice(0, 10)));
-          } else if (typeof data[0].image === 'string') {
-            console.log('Image string length:', data[0].image.length);
-            console.log('First 50 chars:', data[0].image.substring(0, 50));
-          }
-        }
-      }
-      setHistoryLogs(data || []);
     } catch (err) {
       console.error('Error fetching history logs:', err);
       setError(`Failed to load history logs: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -191,15 +101,15 @@ const HistoryTab = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, []);
 
-  // Fetch data when component mounts or user changes
+  // Fetch data when component mounts
   useEffect(() => {
     fetchHistoryLogs();
   }, [fetchHistoryLogs]);
 
   // Cache for Blob URLs to avoid recreating them
-  const [blobUrlCache, setBlobUrlCache] = useState<Map<number, string>>(new Map());
+  const [blobUrlCache, setBlobUrlCache] = useState<Map<number | string, string>>(new Map());
 
   // Cleanup Blob URLs to prevent memory leaks
   useEffect(() => {
@@ -217,11 +127,11 @@ const HistoryTab = () => {
       // Try different possible date field names
       const aDate = a.date_logged || a.timestamp || a.created_at;
       const bDate = b.date_logged || b.timestamp || b.created_at;
-      
+
       if (!aDate && !bDate) return 0;
       if (!aDate) return 1;
       if (!bDate) return -1;
-      
+
       try {
         return new Date(aDate).getTime() - new Date(bDate).getTime();
       } catch (error) {
@@ -262,7 +172,7 @@ const HistoryTab = () => {
 
     if (filters.searchTerm) {
       const searchLower = filters.searchTerm.toLowerCase();
-      filtered = filtered.filter(log => 
+      filtered = filtered.filter(log =>
         log.email?.toLowerCase().includes(searchLower) ||
         log.id.toString().includes(searchLower)
       );
@@ -275,7 +185,7 @@ const HistoryTab = () => {
     if (filters.dateRange !== 'all') {
       const now = new Date();
       const cutoffDate = new Date();
-      
+
       switch (filters.dateRange) {
         case 'today':
           cutoffDate.setHours(0, 0, 0, 0);
@@ -287,12 +197,12 @@ const HistoryTab = () => {
           cutoffDate.setMonth(now.getMonth() - 1);
           break;
       }
-      
+
       filtered = filtered.filter(log => {
         // Try different possible date field names
         const dateValue = log.date_logged || log.timestamp || log.created_at;
         if (!dateValue) return false;
-        
+
         try {
           const logDate = new Date(dateValue);
           return logDate >= cutoffDate;
@@ -307,12 +217,12 @@ const HistoryTab = () => {
     filtered.sort((a, b) => {
       const aValue = a[sortConfig.field];
       const bValue = b[sortConfig.field];
-      
+
       // Handle undefined values
       if (aValue == null && bValue == null) return 0;
       if (aValue == null) return sortConfig.direction === 'asc' ? -1 : 1;
       if (bValue == null) return sortConfig.direction === 'asc' ? 1 : -1;
-      
+
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -340,10 +250,10 @@ const HistoryTab = () => {
     const greenMold = processedData.filter(log => log.detected_disease === 1).length;
     const blackMold = processedData.filter(log => log.detected_disease === 2).length;
     const contaminated = greenMold + blackMold; // Total contaminated for backward compatibility
-    const avgConfidence = total > 0 
+    const avgConfidence = total > 0
       ? Math.round(processedData.reduce((sum, log) => sum + (log.confidence || 0), 0) / total)
       : 0;
-    
+
     return { total, healthy, greenMold, blackMold, contaminated, avgConfidence };
   }, [processedData]);
 
@@ -370,7 +280,7 @@ const HistoryTab = () => {
     setPagination(prev => ({ ...prev, itemsPerPage, currentPage: 1 }));
   }, []);
 
-  const handleDeleteLog = useCallback((logId: number) => {
+  const handleDeleteLog = useCallback((logId: number | string) => {
     setShowDeleteConfirm({ show: true, logId });
   }, []);
 
@@ -380,31 +290,17 @@ const HistoryTab = () => {
     setIsLoading(true);
     try {
       console.log('Attempting to delete log with ID:', showDeleteConfirm.logId);
-      
-      // Try with quotes first
-      let { error: deleteError } = await supabase
-        .from('"Logs"')
-        .delete()
-        .eq('id', showDeleteConfirm.logId);
 
-      // If that fails, try without quotes
-      if (deleteError) {
-        console.log('Delete with quotes failed, trying without quotes:', deleteError);
-        const result = await supabase
-          .from('Logs')
-          .delete()
-          .eq('id', showDeleteConfirm.logId);
-        deleteError = result.error;
-      }
+      // Filter out the log to be deleted
+      const updatedLogs = historyLogs.filter(log => log.id !== showDeleteConfirm.logId);
 
-      if (deleteError) {
-        console.error('Supabase delete error:', deleteError);
-        throw new Error(`Database error: ${deleteError.message || 'Unknown error'}`);
-      }
+      // Update state
+      setHistoryLogs(updatedLogs);
+
+      // Update LocalStorage
+      localStorage.setItem('shroomify_scans', JSON.stringify(updatedLogs));
 
       console.log('Log deleted successfully');
-      // Refresh the data
-      await fetchHistoryLogs();
       setShowDeleteConfirm({ show: false, logId: null });
     } catch (err) {
       console.error('Error deleting log:', err);
@@ -412,7 +308,7 @@ const HistoryTab = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [showDeleteConfirm.logId, fetchHistoryLogs]);
+  }, [showDeleteConfirm.logId, historyLogs]);
 
   const cancelDeleteLog = useCallback(() => {
     setShowDeleteConfirm({ show: false, logId: null });
@@ -432,34 +328,18 @@ const HistoryTab = () => {
 
     setIsLoading(true);
     try {
-      // Convert string IDs back to numbers for the database
-      const numericIds = showBulkDeleteConfirm.logIds.map(id => parseInt(id));
-      console.log('Attempting to delete logs with IDs:', numericIds);
-      
-      // Try with quotes first
-      let { error: deleteError } = await supabase
-        .from('"Logs"')
-        .delete()
-        .in('id', numericIds);
+      console.log('Attempting to delete logs with IDs:', showBulkDeleteConfirm.logIds);
 
-      // If that fails, try without quotes
-      if (deleteError) {
-        console.log('Bulk delete with quotes failed, trying without quotes:', deleteError);
-        const result = await supabase
-          .from('Logs')
-          .delete()
-          .in('id', numericIds);
-        deleteError = result.error;
-      }
+      // Filter out the logs to be deleted
+      const updatedLogs = historyLogs.filter(log => !showBulkDeleteConfirm.logIds.includes(log.id.toString()));
 
-      if (deleteError) {
-        console.error('Supabase bulk delete error:', deleteError);
-        throw new Error(`Database error: ${deleteError.message || 'Unknown error'}`);
-      }
+      // Update state
+      setHistoryLogs(updatedLogs);
+
+      // Update LocalStorage
+      localStorage.setItem('shroomify_scans', JSON.stringify(updatedLogs));
 
       console.log('Logs deleted successfully');
-      // Refresh the data
-      await fetchHistoryLogs();
       setSelectedLogs(new Set());
       setShowBulkDeleteConfirm({ show: false, logIds: [] });
     } catch (err) {
@@ -468,17 +348,17 @@ const HistoryTab = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [showBulkDeleteConfirm.logIds, fetchHistoryLogs]);
+  }, [showBulkDeleteConfirm.logIds, historyLogs]);
 
   const cancelBulkDelete = useCallback(() => {
     setShowBulkDeleteConfirm({ show: false, logIds: [] });
   }, []);
 
   const handleExport = useCallback((format: typeof CONFIG.EXPORT_FORMATS[number]) => {
-    const dataToExport = selectedLogs.size > 0 
+    const dataToExport = selectedLogs.size > 0
       ? processedData.filter(log => selectedLogs.has(log.id.toString()))
       : processedData;
-    
+
     console.log(`Exporting ${dataToExport.length} records as ${format}`);
     // Implementation would handle actual export logic
   }, [processedData, selectedLogs]);
@@ -545,29 +425,29 @@ const HistoryTab = () => {
     }
   };
 
-  const getImageSrc = (imageData: Uint8Array | string | null, logId: number): string | null => {
+  const getImageSrc = (imageData: Uint8Array | string | null, logId: number | string): string | null => {
     if (!imageData) {
       console.log(`No image data for log ${logId}`);
       return null;
     }
-    
+
     try {
       console.log(`Processing image for log ${logId}, type:`, typeof imageData, 'length:', imageData instanceof Uint8Array ? imageData.length : 'N/A');
-      
+
       // If it's already a string (base64), return it
       if (typeof imageData === 'string') {
         console.log(`String image data for log ${logId}, starts with:`, imageData.substring(0, 50));
-        
+
         // Check if it's already a data URL
         if (imageData.startsWith('data:')) {
           return imageData;
         }
-        
+
         // Check if it's base64 without data URL prefix
         if (imageData.startsWith('/9j/') || imageData.startsWith('iVBOR')) {
           return `data:image/jpeg;base64,${imageData}`;
         }
-        
+
         // Check if it's a hex-encoded string (like \x7b2230223a3235352c...)
         if (imageData.startsWith('\\x') || imageData.startsWith('\\x')) {
           console.log(`Detected hex-encoded format for log ${logId}`);
@@ -575,7 +455,7 @@ const HistoryTab = () => {
             // Convert hex string to regular string
             const hexString = imageData.replace(/\\x/g, '').replace(/\\x/g, '');
             console.log(`Hex string for log ${logId}:`, hexString.substring(0, 100));
-            
+
             let jsonString = '';
             try {
               // Process hex string in chunks of 2 characters
@@ -593,10 +473,10 @@ const HistoryTab = () => {
               console.error(`Hex conversion error for log ${logId}:`, hexError);
               return null;
             }
-            
+
             const jsonObject = JSON.parse(jsonString);
             console.log(`Parsed JSON object for log ${logId}, keys:`, Object.keys(jsonObject).length);
-            
+
             // Convert the JSON object back to Uint8Array
             const uint8Array = new Uint8Array(Object.keys(jsonObject).length);
             for (const [key, value] of Object.entries(jsonObject)) {
@@ -605,15 +485,15 @@ const HistoryTab = () => {
                 uint8Array[index] = value;
               }
             }
-            
+
             console.log(`Converted to Uint8Array for log ${logId}, length:`, uint8Array.length);
-            
+
             // Check if we already have a cached Blob URL for this log
             if (blobUrlCache.has(logId)) {
               console.log(`Using cached Blob URL for log ${logId}`);
               return blobUrlCache.get(logId)!;
             }
-            
+
             // Check if the data is too large for data URL (roughly 1MB limit)
             if (uint8Array.length > 1000000) {
               console.log(`Creating Blob URL for large image (${uint8Array.length} bytes) for log ${logId}`);
@@ -621,12 +501,12 @@ const HistoryTab = () => {
               const arrayBuffer = uint8Array.buffer.slice(uint8Array.byteOffset, uint8Array.byteOffset + uint8Array.byteLength) as ArrayBuffer;
               const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
               const url = URL.createObjectURL(blob);
-              
+
               console.log(`Created Blob URL for log ${logId}:`, url);
-              
+
               // Cache the URL
               setBlobUrlCache(prev => new Map(prev).set(logId, url));
-              
+
               return url;
             } else {
               console.log(`Creating data URL for small image (${uint8Array.length} bytes) for log ${logId}`);
@@ -642,10 +522,10 @@ const HistoryTab = () => {
                 const arrayBuffer = uint8Array.buffer.slice(uint8Array.byteOffset, uint8Array.byteOffset + uint8Array.byteLength) as ArrayBuffer;
                 const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
                 const url = URL.createObjectURL(blob);
-                
+
                 // Cache the URL
                 setBlobUrlCache(prev => new Map(prev).set(logId, url));
-                
+
                 return url;
               }
             }
@@ -654,20 +534,20 @@ const HistoryTab = () => {
             return null;
           }
         }
-        
+
         return imageData;
       }
-      
+
       // If it's Uint8Array, convert to Blob URL for better performance
       if (imageData instanceof Uint8Array) {
         console.log(`Uint8Array image data for log ${logId}, length:`, imageData.length);
-        
+
         // Check if we already have a cached Blob URL for this log
         if (blobUrlCache.has(logId)) {
           console.log(`Using cached Blob URL for log ${logId}`);
           return blobUrlCache.get(logId)!;
         }
-        
+
         // Check if the data is too large for data URL (roughly 1MB limit)
         if (imageData.length > 1000000) {
           console.log(`Creating Blob URL for large image (${imageData.length} bytes) for log ${logId}`);
@@ -675,12 +555,12 @@ const HistoryTab = () => {
           const arrayBuffer = imageData.buffer.slice(imageData.byteOffset, imageData.byteOffset + imageData.byteLength) as ArrayBuffer;
           const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
           const url = URL.createObjectURL(blob);
-          
+
           console.log(`Created Blob URL for log ${logId}:`, url);
-          
+
           // Cache the URL
           setBlobUrlCache(prev => new Map(prev).set(logId, url));
-          
+
           return url;
         } else {
           console.log(`Creating data URL for small image (${imageData.length} bytes) for log ${logId}`);
@@ -696,15 +576,15 @@ const HistoryTab = () => {
             const arrayBuffer = imageData.buffer.slice(imageData.byteOffset, imageData.byteOffset + imageData.byteLength) as ArrayBuffer;
             const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
             const url = URL.createObjectURL(blob);
-            
+
             // Cache the URL
             setBlobUrlCache(prev => new Map(prev).set(logId, url));
-            
+
             return url;
           }
         }
       }
-      
+
       console.log(`Unknown image data type for log ${logId}:`, typeof imageData);
       return null;
     } catch (error) {
@@ -730,7 +610,7 @@ const HistoryTab = () => {
           </h2>
           <p className="text-gray-400">Track your contamination detection results over time</p>
         </div>
-        
+
         {/* Export Controls */}
         <div className="flex items-center space-x-2 mt-4 lg:mt-0">
           <select
@@ -915,14 +795,6 @@ const HistoryTab = () => {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto"></div>
             <p className="text-gray-400 mt-4">Loading history logs...</p>
           </div>
-        ) : !user ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-8 h-8 text-gray-500" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-400 mb-2">Please log in</h3>
-            <p className="text-gray-500 text-sm">You need to be logged in to view your scan history</p>
-          </div>
         ) : paginatedData.length > 0 ? (
           paginatedData.map((log) => (
             <div key={log.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
@@ -955,7 +827,7 @@ const HistoryTab = () => {
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <button 
+                    <button
                       onClick={() => handleDeleteLog(log.id)}
                       disabled={isLoading}
                       className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
@@ -990,7 +862,7 @@ const HistoryTab = () => {
                   </div>
 
                   <div className="flex justify-end">
-                    <div 
+                    <div
                       className="w-20 h-20 bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer hover:bg-gray-600 transition-colors group relative"
                       onClick={() => {
                         const imageSrc = getImageSrc(log.image, log.id);
@@ -1008,8 +880,8 @@ const HistoryTab = () => {
                         console.log(`Rendering image for log ${log.id}, src:`, imageSrc ? 'Generated' : 'None');
                         return imageSrc ? (
                           <>
-                            <img 
-                              src={imageSrc} 
+                            <img
+                              src={imageSrc}
                               alt={`Scan ${log.chronologicalNumber}`}
                               className="w-full h-full object-cover rounded-lg pointer-events-none"
                               onLoad={() => console.log(`Image loaded successfully for log ${log.id}`)}
@@ -1029,7 +901,7 @@ const HistoryTab = () => {
                           </>
                         ) : null;
                       })()}
-                      <div 
+                      <div
                         className="w-full h-full flex items-center justify-center text-gray-500 text-xs pointer-events-none"
                         style={{ display: getImageSrc(log.image, log.id) ? 'none' : 'flex' }}
                       >
@@ -1052,14 +924,7 @@ const HistoryTab = () => {
                 ? 'Start scanning your mushroom bags to see history here'
                 : 'Try adjusting your filters to see more results'}
             </p>
-            {user && (
-              <button
-                onClick={fetchHistoryLogs}
-                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-              >
-                Refresh
-              </button>
-            )}
+            {/* Refresh button removed as it's not needed for local storage */}
           </div>
         )}
       </div>
@@ -1091,21 +956,20 @@ const HistoryTab = () => {
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            
+
             <div className="flex space-x-1">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const pageNum = i + Math.max(1, pagination.currentPage - 2);
                 if (pageNum > totalPages) return null;
-                
+
                 return (
                   <button
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`px-3 py-1 rounded text-sm transition-colors ${
-                      pageNum === pagination.currentPage
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
+                    className={`px-3 py-1 rounded text-sm transition-colors ${pageNum === pagination.currentPage
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
                   >
                     {pageNum}
                   </button>
@@ -1137,11 +1001,11 @@ const HistoryTab = () => {
                 <p className="text-gray-400 text-sm">This action cannot be undone</p>
               </div>
             </div>
-            
+
             <p className="text-gray-300 mb-6">
               Are you sure you want to delete this scan log? All data associated with this scan will be permanently removed.
             </p>
-            
+
             <div className="flex space-x-3">
               <button
                 onClick={cancelDeleteLog}
@@ -1175,11 +1039,11 @@ const HistoryTab = () => {
                 <p className="text-gray-400 text-sm">This action cannot be undone</p>
               </div>
             </div>
-            
+
             <p className="text-gray-300 mb-6">
               Are you sure you want to delete <span className="font-semibold text-white">{showBulkDeleteConfirm.logIds.length}</span> selected scan logs? All data associated with these scans will be permanently removed.
             </p>
-            
+
             <div className="flex space-x-3">
               <button
                 onClick={cancelBulkDelete}

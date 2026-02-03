@@ -3,8 +3,6 @@ import { Camera, Zap, Upload, CheckCircle, AlertTriangle, XCircle, X, Eye, List 
 import React, { useState, useRef, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import ErrorModal from "@/app/tabs/ErrorModal";
-import { useAuth } from "@/lib/AuthContext";
-import { supabase } from "@/lib/supabaseClient";
 import ImageEnlargementModal from './ImageEnlargementModal';
 
 // Interface for scan data stored in localStorage
@@ -12,35 +10,31 @@ interface ScanData {
   id: string;
   date_logged: string;
   detected_disease: number;
-  email: string;
+  email: string | null;
   confidence: number;
-  image: string;
-  synced: boolean;
+  image: string; // Base64 string
 }
 
 // ResultPopup Component (inline)
-const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLoggedIn, userEmail, onSaveResult, isSaving, saveMessage, isSaved, setIsSaved }: { 
-  result: number | string | null, 
-  previewImage: string | null, 
-  confidence: number | null, 
-  isOpen: boolean, 
-  onClose: () => void, 
-  isLoggedIn: boolean,
-  userEmail: string | null,
-  onSaveResult: (result: number, image: string, confidence: number, email: string) => Promise<void>,
+const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, onSaveResult, isSaving, saveMessage, isSaved, setIsSaved }: {
+  result: number | string | null,
+  previewImage: string | null,
+  confidence: number | null,
+  isOpen: boolean,
+  onClose: () => void,
+  onSaveResult: (result: number, image: string, confidence: number) => Promise<void>,
   isSaving: boolean,
   saveMessage: string | null,
   isSaved: boolean,
   setIsSaved: (value: boolean) => void
 }) => {
   const [enlargedImage, setEnlargedImage] = useState<{ src: string; title: string } | null>(null);
-  
-  console.log('ResultPopup - isLoggedIn:', isLoggedIn); // Debug log
+
   if (!isOpen) return null;
 
   // Condition statements for different results
   const getResultData = (resultCode: number | string | null) => {
-    // Handle special case for no fruiting bag detected - same for all users
+    // Handle special case for no fruiting bag detected
     if (resultCode === 'no_fruiting_bag') {
       return {
         status: 'No Fruiting Bag Detected',
@@ -57,57 +51,11 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
           'Make sure the entire bag is visible in the frame'
         ],
         severity: 'info',
-        showSaveButton: false // Don't show save button for this case
+        showSaveButton: false
       };
     }
-    
-    // For non-logged-in users, show simplified results
-    if (!isLoggedIn) {
-      switch (resultCode) {
-        case 0:
-          return {
-            status: 'Healthy Fruiting Bag',
-            icon: CheckCircle,
-            iconColor: 'text-green-500',
-            bgColor: 'bg-green-600/10',
-            borderColor: 'border-green-600/30',
-            message: 'No contamination detected',
-            description: '',
-            recommendations: [],
-            severity: 'success',
-            showSignInPrompt: true
-          };
-        case 1:
-        case 2:
-          return {
-            status: 'Contaminated Fruiting Bag',
-            icon: XCircle,
-            iconColor: 'text-red-500',
-            bgColor: 'bg-red-600/10',
-            borderColor: 'border-red-600/30',
-            message: 'Contamination detected',
-            description: '',
-            recommendations: [],
-            severity: 'danger',
-            showSignInPrompt: true
-          };
-        default:
-          return {
-            status: 'Unknown Result',
-            icon: AlertTriangle,
-            iconColor: 'text-gray-500',
-            bgColor: 'bg-gray-600/10',
-            borderColor: 'border-gray-600/30',
-            message: 'Unable to determine result',
-            description: 'The analysis could not be completed properly.',
-            recommendations: [],
-            severity: 'info',
-            showSignInPrompt: true
-          };
-      }
-    }
-    
-    // For logged-in users, show detailed results
+
+    // Show detailed results for everyone
     switch (resultCode) {
       case 0:
         return {
@@ -193,18 +141,16 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
             </div>
             <div className="flex-1">
               <h3 className="text-xl font-bold text-white">{resultData.status}</h3>
-              {isLoggedIn && confidence !== null && (
+              {confidence !== null && (
                 <div className="mt-1 flex items-center space-x-2">
                   <span className="text-xs text-gray-500">Confidence:</span>
                   <div className="flex items-center space-x-1">
-                    <div className={`w-2 h-2 rounded-full ${
-                      confidence >= 0.8 ? 'bg-green-400' :
+                    <div className={`w-2 h-2 rounded-full ${confidence >= 0.8 ? 'bg-green-400' :
                       confidence >= 0.6 ? 'bg-yellow-400' : 'bg-red-400'
-                    }`}></div>
-                    <span className={`text-xs font-medium ${
-                      confidence >= 0.8 ? 'text-green-400' :
+                      }`}></div>
+                    <span className={`text-xs font-medium ${confidence >= 0.8 ? 'text-green-400' :
                       confidence >= 0.6 ? 'text-yellow-400' : 'text-red-400'
-                    }`}>
+                      }`}>
                       {Math.round(confidence * 100)}%
                     </span>
                   </div>
@@ -225,7 +171,7 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
           {/* Preview Image */}
           {previewImage && (
             <div>
-              <div 
+              <div
                 className="relative bg-gray-800 rounded-lg border border-gray-700 overflow-hidden cursor-pointer hover:bg-gray-700 transition-colors group"
                 onClick={() => {
                   console.log('Preview image clicked');
@@ -249,8 +195,8 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
             </div>
           )}
 
-          {/* Description - show for logged-in users or no fruiting bag detected */}
-          {((isLoggedIn && resultData.description) || result === 'no_fruiting_bag') && (
+          {/* Description */}
+          {((resultData.description) || result === 'no_fruiting_bag') && (
             <div className={`${resultData.bgColor} ${resultData.borderColor} border rounded-lg p-4`}>
               <p className="text-gray-300 text-sm leading-relaxed">
                 {resultData.description}
@@ -258,18 +204,17 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
             </div>
           )}
 
-          {/* Recommendations - show for logged-in users or no fruiting bag detected */}
-          {((isLoggedIn && resultData.recommendations && resultData.recommendations.length > 0) || result === 'no_fruiting_bag') && (
+          {/* Recommendations */}
+          {((resultData.recommendations && resultData.recommendations.length > 0) || result === 'no_fruiting_bag') && (
             <div>
               <h4 className="text-lg font-semibold text-white mb-3">Recommendations</h4>
               <div className="space-y-2">
                 {resultData.recommendations.map((recommendation, index) => (
                   <div key={index} className="flex items-start space-x-3">
-                    <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                      resultData.severity === 'success' ? 'bg-green-400' :
+                    <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${resultData.severity === 'success' ? 'bg-green-400' :
                       resultData.severity === 'warning' ? 'bg-yellow-400' :
-                      resultData.severity === 'danger' ? 'bg-red-400' : 'bg-gray-400'
-                    }`}></div>
+                        resultData.severity === 'danger' ? 'bg-red-400' : 'bg-gray-400'
+                      }`}></div>
                     <p className="text-gray-300 text-sm">{recommendation}</p>
                   </div>
                 ))}
@@ -277,67 +222,48 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
             </div>
           )}
 
-          {/* Sign-in prompt for non-logged-in users (except no fruiting bag detected) */}
-          {!isLoggedIn && resultData.showSignInPrompt && result !== 'no_fruiting_bag' && (
-            <div className="bg-blue-600/10 border border-blue-600/30 rounded-lg p-4">
-              <button
-                onClick={() => {
-                  // Navigate to ProfileTab by triggering a tab change
-                  const event = new CustomEvent('navigateToTab', { detail: { tabName: 'profile' } });
-                  window.dispatchEvent(event);
-                }}
-                className="text-blue-400 hover:text-blue-300 underline text-sm font-medium transition-colors text-left w-full"
-              >
-                Please sign-in to get a more detailed result
-              </button>
-            </div>
-          )}
-
           {/* Save Status Message */}
           {saveMessage && (
-            <div className={`p-3 rounded-lg border ${
-              saveMessage.includes('successfully') 
-                ? 'bg-green-600/10 border-green-600/30 text-green-400'
-                : 'bg-red-600/10 border-red-600/30 text-red-400'
-            }`}>
+            <div className={`p-3 rounded-lg border ${saveMessage.includes('successfully')
+              ? 'bg-green-600/10 border-green-600/30 text-green-400'
+              : 'bg-red-600/10 border-red-600/30 text-red-400'
+              }`}>
               <p className="text-sm font-medium">{saveMessage}</p>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className={`flex space-x-3 pt-4 ${(isLoggedIn && resultData.showSaveButton !== false) ? '' : 'justify-center'}`}>
+          <div className={`flex space-x-3 pt-4 ${(resultData.showSaveButton !== false) ? '' : 'justify-center'}`}>
             <button
               onClick={onClose}
-              className={`${(isLoggedIn && resultData.showSaveButton !== false) ? 'flex-1' : 'w-full'} bg-gray-800 hover:bg-gray-700 text-white py-3 px-4 rounded-lg transition-colors font-medium`}
+              className={`${(resultData.showSaveButton !== false) ? 'flex-1' : 'w-full'} bg-gray-800 hover:bg-gray-700 text-white py-3 px-4 rounded-lg transition-colors font-medium`}
             >
               Close
             </button>
-            {isLoggedIn === true && !isSaved && resultData.showSaveButton !== false && (
+            {!isSaved && resultData.showSaveButton !== false && (
               <button
                 onClick={async () => {
-                  if (result !== null && previewImage && confidence !== null && userEmail && typeof result === 'number') {
+                  if (result !== null && previewImage && confidence !== null && typeof result === 'number') {
                     try {
-                      await onSaveResult(result, previewImage, confidence, userEmail);
+                      await onSaveResult(result, previewImage, confidence);
                       console.log('Result saved successfully');
                       setIsSaved(true);
-                      // Don't close immediately, let user see the success message
                     } catch (error) {
                       console.error('Failed to save result:', error);
                     }
                   }
                 }}
                 disabled={isSaving}
-                className={`flex-1 py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center space-x-2 ${
-                  isSaving 
-                    ? 'bg-gray-600 cursor-not-allowed text-gray-300'
-                    : resultData.severity === 'success' 
+                className={`flex-1 py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center space-x-2 ${isSaving
+                  ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                  : resultData.severity === 'success'
                     ? 'bg-green-600 hover:bg-green-500 text-white'
                     : resultData.severity === 'warning'
-                    ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
-                    : resultData.severity === 'danger'
-                    ? 'bg-red-600 hover:bg-red-500 text-white'
-                    : 'bg-blue-600 hover:bg-blue-500 text-white'
-                }`}
+                      ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
+                      : resultData.severity === 'danger'
+                        ? 'bg-red-600 hover:bg-red-500 text-white'
+                        : 'bg-blue-600 hover:bg-blue-500 text-white'
+                  }`}
               >
                 {isSaving ? (
                   <>
@@ -367,8 +293,6 @@ const ResultPopup = ({ result, previewImage, confidence, isOpen, onClose, isLogg
 
 // Main ScanTab Component
 const ScanTab = () => {
-  const { isLoggedIn, user } = useAuth();
-  console.log('ScanTab - isLoggedIn:', isLoggedIn); // Debug log
   const [isScanning, setIsScanning] = useState(false);
   const webcamRef = useRef<Webcam>(null);
   const [scanMode, setScanMode] = useState<'individual' | 'batch'>('individual');
@@ -378,8 +302,7 @@ const ScanTab = () => {
   const [contaminatedImages, setContaminatedImages] = useState<{ image: string; prediction: number; confidence: number }[]>([]);
   const [contaminatedFilter, setContaminatedFilter] = useState<'all' | 'green' | 'black'>('all');
   const [enlargedQueueImage, setEnlargedQueueImage] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  
+
   // New state for result popup
   const [showResult, setShowResult] = useState(false);
   const [scanResult, setScanResult] = useState<number | string | null>(null);
@@ -388,63 +311,35 @@ const ScanTab = () => {
   const [showError, setShowError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [showSnapAnimation, setShowSnapAnimation] = useState(false);
 
-  // Force individual mode when not logged in
-  useEffect(() => {
-    if (!isLoggedIn && scanMode === 'batch') {
-      setScanMode('individual');
-    }
-  }, [isLoggedIn, scanMode]);
-
-  // Auto-sync localStorage data to database on component mount
-  useEffect(() => {
-    const autoSync = async () => {
-      try {
-        const scans = JSON.parse(localStorage.getItem('shroomify_scans') || '[]');
-        const unsyncedScans = scans.filter((scan: ScanData) => !scan.synced);
-        
-        if (unsyncedScans.length > 0) {
-          console.log(`Found ${unsyncedScans.length} unsynced scans, attempting to sync...`);
-          await syncToDatabase();
-        }
-      } catch (error) {
-        console.error('Auto-sync failed:', error);
-      }
-    };
-
-    autoSync();
-  }, []);
-
   // Function to save scan result to localStorage
-  const saveToLocalStorage = (result: number, image: string, confidence: number, email: string) => {
+  const saveToLocalStorage = (result: number, image: string, confidence: number) => {
     try {
-      const scanData = {
+      const scanData: ScanData = {
         id: Date.now().toString(),
         date_logged: new Date().toISOString(),
         detected_disease: result,
-        email: email,
+        email: null, // Removed auth dependency
         confidence: confidence,
         image: image, // Store as base64 string in localStorage
-        synced: false // Flag to track if synced to database
       };
 
       // Get existing scans from localStorage
       const existingScans = JSON.parse(localStorage.getItem('shroomify_scans') || '[]');
-      
+
       // Add new scan
       existingScans.push(scanData);
-      
+
       // Keep only last 50 scans to prevent localStorage from getting too large
       if (existingScans.length > 50) {
         existingScans.splice(0, existingScans.length - 50);
       }
-      
+
       // Save back to localStorage
       localStorage.setItem('shroomify_scans', JSON.stringify(existingScans));
-      
+
       console.log('Saved scan result to localStorage:', scanData);
       return scanData;
     } catch (error) {
@@ -453,130 +348,20 @@ const ScanTab = () => {
     }
   };
 
-  // Function to sync localStorage data to database
-  const syncToDatabase = async () => {
-    setIsSyncing(true);
-    try {
-      const scans = JSON.parse(localStorage.getItem('shroomify_scans') || '[]');
-      const unsyncedScans = scans.filter((scan: ScanData) => !scan.synced);
-      
-      if (unsyncedScans.length === 0) {
-        console.log('No unsynced scans to upload');
-        setSaveMessage('All scans are already synced!');
-        setTimeout(() => setSaveMessage(null), 3000);
-        return;
-      }
-
-      console.log(`Syncing ${unsyncedScans.length} scans to database...`);
-
-      let syncedCount = 0;
-      for (const scan of unsyncedScans) {
-        try {
-          // Convert base64 image to binary data for bytea storage
-          const binaryString = atob(scan.image);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-
-          const { error } = await supabase
-            .from('Logs')
-            .insert({
-              date_logged: scan.date_logged,
-              image: bytes,
-              detected_disease: scan.detected_disease,
-              email: scan.email,
-              confidence: scan.confidence
-            });
-
-          if (error) {
-            console.error('Error syncing scan to database:', error);
-            // Don't mark as synced if there was an error
-            continue;
-          }
-
-          // Mark as synced
-          scan.synced = true;
-          syncedCount++;
-          console.log('Successfully synced scan to database:', scan.id);
-        } catch (error) {
-          console.error('Failed to sync individual scan:', error);
-        }
-      }
-
-      // Update localStorage with synced status
-      localStorage.setItem('shroomify_scans', JSON.stringify(scans));
-      console.log('Sync to database completed');
-      
-      if (syncedCount > 0) {
-        setSaveMessage(`Successfully synced ${syncedCount} scans to cloud!`);
-      } else {
-        setSaveMessage('Sync failed - scans remain saved locally');
-      }
-      
-      setTimeout(() => setSaveMessage(null), 5000);
-    } catch (error) {
-      console.error('Failed to sync to database:', error);
-      setSaveMessage('Sync failed - scans remain saved locally');
-      setTimeout(() => setSaveMessage(null), 5000);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
   // Function to save all batch results
   const saveAllBatchResults = async () => {
-    if (!isLoggedIn || !user?.email) {
-      setToastMessage('Please log in to save results');
-      setTimeout(() => setToastMessage(null), 3000);
-      return;
-    }
-
     setIsSaving(true);
     setSaveMessage('Saving all results...');
 
     try {
       const allResults = [...healthyImages, ...contaminatedImages];
       let savedCount = 0;
-      let syncedCount = 0;
       let errorCount = 0;
 
       for (const item of allResults) {
         try {
           // Save to localStorage
-          const savedData = saveToLocalStorage(item.prediction, item.image, item.confidence, user.email);
-          
-          // Try to sync to database
-          try {
-            const binaryString = atob(item.image);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-
-            const { error } = await supabase
-              .from('Logs')
-              .insert({
-                date_logged: savedData.date_logged,
-                image: bytes,
-                detected_disease: item.prediction,
-                email: user.email,
-                confidence: item.confidence
-              });
-
-            if (!error) {
-              // Mark as synced in localStorage
-              const scans = JSON.parse(localStorage.getItem('shroomify_scans') || '[]');
-              const updatedScans = scans.map((scan: ScanData) => 
-                scan.id === savedData.id ? { ...scan, synced: true } : scan
-              );
-              localStorage.setItem('shroomify_scans', JSON.stringify(updatedScans));
-              syncedCount++;
-            }
-          } catch (dbError) {
-            console.error('Database sync failed for item:', dbError);
-            // Still count as saved since it's in localStorage
-          }
-          
+          saveToLocalStorage(item.prediction, item.image, item.confidence);
           savedCount++;
         } catch (error) {
           console.error('Failed to save individual result:', error);
@@ -587,13 +372,9 @@ const ScanTab = () => {
       // Clear the queue after saving
       setHealthyImages([]);
       setContaminatedImages([]);
-      
-      if (savedCount === allResults.length) {
-        setSaveMessage(`Successfully saved ${savedCount} results${syncedCount < savedCount ? ` (${syncedCount} synced to cloud)` : ''}!`);
-      } else {
-        setSaveMessage(`Saved ${savedCount} results${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
-      }
-      
+
+      setSaveMessage(`Saved ${savedCount} results${errorCount > 0 ? ` (${errorCount} failed)` : ''}!`);
+
       setTimeout(() => {
         setSaveMessage(null);
         setShowQueueModal(false);
@@ -607,77 +388,26 @@ const ScanTab = () => {
     }
   };
 
-  // Function to save scan result (localStorage first, then database)
-  const saveScanResult = async (result: number, image: string, confidence: number, email: string) => {
+  // Function to save scan result
+  const saveScanResult = async (result: number, image: string, confidence: number) => {
     setIsSaving(true);
     setSaveMessage(null);
-    
+
     try {
-      console.log('Saving scan result:', { result, confidence, email, imageLength: image.length });
-      
-      // Step 1: Save to localStorage first (always succeeds)
-      const savedData = saveToLocalStorage(result, image, confidence, email);
+      console.log('Saving scan result:', { result, confidence, imageLength: image.length });
+
+      // Save to localStorage
+      saveToLocalStorage(result, image, confidence);
       console.log('Successfully saved to localStorage');
-      setSaveMessage('Saving . . .');
-      
-      // Step 2: Try to sync to database (may fail, but that's okay)
-      try {
-        // Convert base64 image to binary data for bytea storage
-        const binaryString = atob(image);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        console.log('Attempting to sync to database...');
 
-        const { data, error } = await supabase
-          .from('Logs')
-          .insert({
-            date_logged: savedData.date_logged,
-            image: bytes,
-            detected_disease: result,
-            email: email,
-            confidence: confidence
-          });
+      setSaveMessage('Result saved successfully!');
 
-        if (error) {
-          console.error('Database sync failed:', error);
-          console.error('Error details:', {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code
-          });
-          setSaveMessage('Saving . . .');
-        } else {
-          console.log('Successfully synced to database:', data);
-          // Mark as synced in localStorage
-          const scans = JSON.parse(localStorage.getItem('shroomify_scans') || '[]');
-          const updatedScans = scans.map((scan: ScanData) => 
-            scan.id === savedData.id ? { ...scan, synced: true } : scan
-          );
-          localStorage.setItem('shroomify_scans', JSON.stringify(updatedScans));
-          setSaveMessage('Result saved successfully!');
-          // Close popup after showing success message
-          setTimeout(() => {
-            setShowResult(false);
-          }, 2000);
-        }
-      } catch (dbError) {
-        console.error('Database sync error:', dbError);
-        setSaveMessage('Result saved locally! (Database sync failed - will retry later)');
-        // Close popup after showing success message
-        setTimeout(() => {
-          setShowResult(false);
-        }, 2000);
-      }
-      
-      // Clear success message after 5 seconds
+      // Close popup after showing success message
       setTimeout(() => {
+        setShowResult(false);
         setSaveMessage(null);
-      }, 5000);
-      
+      }, 2000);
+
     } catch (error) {
       console.error('Failed to save scan result:', error);
       setSaveMessage('Failed to save result. Please try again.');
@@ -724,7 +454,7 @@ const ScanTab = () => {
       const imageSrc = webcamRef.current.getScreenshot();
 
       if (!imageSrc) {
-        setShowError(true); 
+        setShowError(true);
         return;
       }
 
@@ -735,7 +465,7 @@ const ScanTab = () => {
         // Trigger snap animation
         setShowSnapAnimation(true);
         setTimeout(() => setShowSnapAnimation(false), 200);
-        
+
         const { id, base64 } = enqueueBatchImage(imageSrc);
         try {
           const res = await fetch(imageSrc);
@@ -760,7 +490,7 @@ const ScanTab = () => {
         } catch (error) {
           console.error('Scan failed (batch):', error);
           completeBatchItem(id, 'unknown', base64);
-          setShowError(true); 
+          setShowError(true);
         }
         return;
       }
@@ -805,7 +535,7 @@ const ScanTab = () => {
 
       } catch (error) {
         console.error('Scan failed:', error);
-        setShowError(true); 
+        setShowError(true);
       } finally {
         setIsScanning(false);
       }
@@ -833,7 +563,7 @@ const ScanTab = () => {
           // Trigger snap animation
           setShowSnapAnimation(true);
           setTimeout(() => setShowSnapAnimation(false), 200);
-          
+
           try {
             const dataUrl = await fileToDataUrl(file);
             const { id, base64 } = enqueueBatchImage(dataUrl);
@@ -874,7 +604,7 @@ const ScanTab = () => {
 
           const result = await response.json();
           console.log(result);
-          
+
           // Check for error response (no fruiting bag detected)
           if (result.error && result.status === 'error') {
             setScanResult('no_fruiting_bag'); // Special case for no fruiting bag
@@ -884,13 +614,13 @@ const ScanTab = () => {
             setShowResult(true);
             return;
           }
-          
+
           setScanResult(result.prediction || result.result);
           setPreviewImage(result.image);
           setConfidence(result.confidence);
           setIsSaved(false);
           setShowResult(true);
-          
+
         } catch (err) {
           console.error('Upload failed:', err);
           setShowError(true);
@@ -918,32 +648,26 @@ const ScanTab = () => {
         <div className="mt-4 inline-flex rounded-full border border-gray-700 bg-gray-800/70 p-1">
           <button
             onClick={() => setScanMode('individual')}
-            className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${
-              scanMode === 'individual'
-                ? 'bg-green-600 text-white shadow-lg shadow-green-600/30'
-                : 'text-gray-300 hover:text-white hover:bg-gray-700'
-            }`}
+            className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${scanMode === 'individual'
+              ? 'bg-green-600 text-white shadow-lg shadow-green-600/30'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700'
+              }`}
           >
             Individual
           </button>
           <button
             onClick={() => {
-              if (!isLoggedIn) {
-                setToastMessage('Please log in to use batch scanning');
-                return;
-              }
               setScanMode('batch');
             }}
-            className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${
-              scanMode === 'batch'
-                ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
-                : 'text-gray-300 hover:text-white hover:bg-gray-700'
-            } ${!isLoggedIn ? 'opacity-50' : ''}`}
+            className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${scanMode === 'batch'
+              ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
+              : 'text-gray-300 hover:text-white hover:bg-gray-700'
+              }`}
           >
             Batch
           </button>
         </div>
-        {scanMode === 'batch' && isLoggedIn && (
+        {scanMode === 'batch' && (
           <div className="fixed right-5 top-25 z-50">
             <button
               onClick={() => setShowQueueModal(true)}
@@ -1003,11 +727,10 @@ const ScanTab = () => {
           <button
             onClick={handleUpload}
             disabled={isScanning}
-            className={`w-16 h-16 rounded-full border-4 flex items-center justify-center transition-all duration-200 ${
-              isScanning
-                ? 'border-gray-600 bg-gray-700 cursor-not-allowed'
-                : 'border-amber-400 bg-amber-600 hover:bg-amber-500 hover:border-amber-300 transform hover:scale-105 shadow-lg shadow-amber-600/25'
-            }`}
+            className={`w-16 h-16 rounded-full border-4 flex items-center justify-center transition-all duration-200 ${isScanning
+              ? 'border-gray-600 bg-gray-700 cursor-not-allowed'
+              : 'border-amber-400 bg-amber-600 hover:bg-amber-500 hover:border-amber-300 transform hover:scale-105 shadow-lg shadow-amber-600/25'
+              }`}
           >
             {isScanning ? (
               <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
@@ -1018,11 +741,10 @@ const ScanTab = () => {
           <button
             onClick={handleSnap}
             disabled={isScanning}
-            className={`w-20 h-20 rounded-full border-4 flex items-center justify-center transition-all duration-200 ${
-              isScanning
-                ? 'border-gray-600 bg-gray-700 cursor-not-allowed'
-                : 'border-green-400 bg-green-600 hover:bg-green-500 hover:border-green-300 transform hover:scale-105 shadow-lg shadow-green-600/25'
-            }`}
+            className={`w-20 h-20 rounded-full border-4 flex items-center justify-center transition-all duration-200 ${isScanning
+              ? 'border-gray-600 bg-gray-700 cursor-not-allowed'
+              : 'border-green-400 bg-green-600 hover:bg-green-500 hover:border-green-300 transform hover:scale-105 shadow-lg shadow-green-600/25'
+              }`}
           >
             {isScanning ? (
               <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
@@ -1069,14 +791,12 @@ const ScanTab = () => {
       </div>
 
       {/* Result Popup */}
-      <ResultPopup 
-        result={scanResult} 
+      <ResultPopup
+        result={scanResult}
         previewImage={previewImage}
         confidence={confidence}
-        isOpen={showResult} 
+        isOpen={showResult}
         onClose={() => setShowResult(false)}
-        isLoggedIn={isLoggedIn}
-        userEmail={user?.email || null}
         onSaveResult={saveScanResult}
         isSaving={isSaving}
         saveMessage={saveMessage}
@@ -1175,33 +895,30 @@ const ScanTab = () => {
                       <button
                         type="button"
                         onClick={() => setContaminatedFilter('all')}
-                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${
-                          contaminatedFilter === 'all'
-                            ? 'bg-red-500 text-white'
-                            : 'text-red-200 hover:text-white hover:bg-red-700/60'
-                        }`}
+                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${contaminatedFilter === 'all'
+                          ? 'bg-red-500 text-white'
+                          : 'text-red-200 hover:text-white hover:bg-red-700/60'
+                          }`}
                       >
                         All
                       </button>
                       <button
                         type="button"
                         onClick={() => setContaminatedFilter('green')}
-                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${
-                          contaminatedFilter === 'green'
-                            ? 'bg-emerald-500 text-white'
-                            : 'text-emerald-200 hover:text-white hover:bg-emerald-700/60'
-                        }`}
+                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${contaminatedFilter === 'green'
+                          ? 'bg-emerald-500 text-white'
+                          : 'text-emerald-200 hover:text-white hover:bg-emerald-700/60'
+                          }`}
                       >
                         Green
                       </button>
                       <button
                         type="button"
                         onClick={() => setContaminatedFilter('black')}
-                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${
-                          contaminatedFilter === 'black'
-                            ? 'bg-gray-900 text-white border border-gray-300/60'
-                            : 'text-gray-200 hover:text-white hover:bg-gray-800/80'
-                        }`}
+                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-full transition-colors ${contaminatedFilter === 'black'
+                          ? 'bg-gray-900 text-white border border-gray-300/60'
+                          : 'text-gray-200 hover:text-white hover:bg-gray-800/80'
+                          }`}
                       >
                         Black
                       </button>
@@ -1244,11 +961,10 @@ const ScanTab = () => {
                 <button
                   onClick={saveAllBatchResults}
                   disabled={isSaving}
-                  className={`w-full py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center space-x-2 ${
-                    isSaving
-                      ? 'bg-gray-600 cursor-not-allowed text-gray-300'
-                      : 'bg-green-600 hover:bg-green-500 text-white'
-                  }`}
+                  className={`w-full py-3 px-4 rounded-lg transition-colors font-medium flex items-center justify-center space-x-2 ${isSaving
+                    ? 'bg-gray-600 cursor-not-allowed text-gray-300'
+                    : 'bg-green-600 hover:bg-green-500 text-white'
+                    }`}
                 >
                   {isSaving ? (
                     <>
@@ -1260,11 +976,10 @@ const ScanTab = () => {
                   )}
                 </button>
                 {saveMessage && (
-                  <div className={`mt-3 p-3 rounded-lg border ${
-                    saveMessage.includes('Successfully') 
-                      ? 'bg-green-600/10 border-green-600/30 text-green-400'
-                      : 'bg-red-600/10 border-red-600/30 text-red-400'
-                  }`}>
+                  <div className={`mt-3 p-3 rounded-lg border ${saveMessage.includes('Successfully')
+                    ? 'bg-green-600/10 border-green-600/30 text-green-400'
+                    : 'bg-red-600/10 border-red-600/30 text-red-400'
+                    }`}>
                     <p className="text-sm font-medium">{saveMessage}</p>
                   </div>
                 )}
@@ -1283,39 +998,9 @@ const ScanTab = () => {
         alt="Queued scan preview"
       />
 
-      {/* Login-required modal (replaces toast) */}
-      {toastMessage && (
-        <div className="fixed inset-0 z-[2200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-amber-500/40 bg-gray-900 shadow-xl p-6 text-center space-y-4">
-            <div className="flex items-center justify-center space-x-2">
-              <AlertTriangle className="w-6 h-6 text-amber-400" />
-              <h3 className="text-lg font-semibold text-white">Action required</h3>
-            </div>
-            <p className="text-sm text-gray-200">
-              Please{' '}
-              <button
-                onClick={() => {
-                  setToastMessage(null);
-                  const event = new CustomEvent('navigateToTab', { detail: { tabName: 'profile' } });
-                  window.dispatchEvent(event);
-                }}
-                className="text-amber-400 hover:text-amber-300 underline font-semibold transition-colors"
-              >
-                log in
-              </button>
-              {' '}to use batch scanning
-            </p>
-            <button
-              onClick={() => setToastMessage(null)}
-              className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-white font-semibold transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
 
-       {/* Error Modal */}
+
+      {/* Error Modal */}
       <ErrorModal
         isOpen={showError}
         onClose={() => setShowError(false)}
